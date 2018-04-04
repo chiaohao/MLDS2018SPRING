@@ -56,7 +56,7 @@ python3 mnist_gen_vis.py
 output images: accs.png losss.png
 
 ## 1-3.3
-** part1 **
+**part1**
 train:
 ```
 cd 1-3/3
@@ -68,7 +68,7 @@ python3 mnist_f_g_mix.py
 ```
 output images: part1.png
 
-** part2 **
+**part2**
 train:
 ```
 cd 1-3/3
