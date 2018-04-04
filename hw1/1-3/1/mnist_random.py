@@ -86,9 +86,7 @@ def train(epoch):
         print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f}\r'.format(
             epoch, batch_idx * len(data), data_size,
             100. * batch_idx / len(train_loader), loss.data[0]), end='')
-
-
-    
+        
     train_loss = 0
     correct = 0
     for data, target in train_loader:
