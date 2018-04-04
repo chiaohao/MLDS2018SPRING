@@ -9,7 +9,8 @@ from torchvision import datasets, transforms
 from torch.autograd import Variable, grad
 from mnist_sensitive_model import Net, batch_sizes
 import matplotlib
-import matplotlib.pyplot as plt
+matplotlib.use('Agg')
+import matplotlib.pyplotls as plt
 
 def sensitive(model, test_loader):
     model.eval()
