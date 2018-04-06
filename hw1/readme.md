@@ -1,3 +1,19 @@
+## 1-1.1
+train and visualize:
+```
+cd 1-1/1
+python3 simple_dnn.py
+```
+output image: func_curve_1.png func_curve_2.png loss_1.png loss_2.png
+
+## 1-1.2
+train and visualize:
+```
+cd 1-1/2
+python3 mnist_dnn.py
+```
+output image: loss.png accuracy.png
+
 ## 1-2.1
 train:
 ```
