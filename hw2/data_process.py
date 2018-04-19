@@ -5,8 +5,8 @@ from pprint import pprint
 
 class Word_dict:
     def __init__(self):
-        self.w2n = {'{UNK}': 0, '{BOS}': 1, '{EOS}': 2}
-        self.n2w = {0: '{UNK}', 1: '{BOS}', 2: '{EOS}'}
+        self.w2n = {'{UNK}': 0, '{BOS}': 1, '{EOS}': 2, '{PAD}': 3}
+        self.n2w = {0: '{UNK}', 1: '{BOS}', 2: '{EOS}', 3: '{PAD}'}
     def add_sentences(self, sentences):
         if type(sentences) == str:
             sentences = [sentences]
@@ -27,7 +27,10 @@ class Word_dict:
         words = filter(None, words)
         result = [self.word2number(word) for word in words]
         for i in range(length - len(result)):
-            result.append(self.word2number('{EOS}'))
+            if i == 0:
+                result.append(self.word2number('{EOS}'))
+            else:
+                result.append(self.word2number('{PAD}'))
         return np.array(result[:length])
 
 def load_label(label_path):
