@@ -17,10 +17,9 @@ from pprint import pprint
 BATCH_SIZE = 128
 
 feats, labels = data_process.load_data('MLDS_hw2_1_data/training_label.json', 'MLDS_hw2_1_data/training_data/feat')
-
 def get_train_loader():
-    xs = torch.from_numpy(np.array(feats))
-    ys = torch.from_numpy(np.array([ls[random.randint(0, len(ls) - 1)] for ls in labels]))
+    xs = torch.from_numpy(feats.astype(np.float32))
+    ys = torch.from_numpy(np.array([ls[random.randint(0, len(ls) - 1)] for ls in labels]).astype(np.float64)).long()
 
     torch_dataset = Data.TensorDataset(data_tensor=xs, target_tensor=ys)
     train_loader = Data.DataLoader(
@@ -45,8 +44,8 @@ class EncoderRNN(nn.Module):
         output, hidden = self.gru(input, hidden)
         return output, hidden
 
-    def initHidden(self):
-        result = Variable(torch.zeros(1, BATCH_SIZE, self.hidden_size))
+    def initHidden(self, batch_size):
+        result = Variable(torch.zeros(1, batch_size, self.hidden_size))
         if use_cuda:
             return result.cuda()
         else:
@@ -65,8 +64,6 @@ class DecoderRNN(nn.Module):
     def forward(self, input, hidden):
         output = self.embedding(input)
         output = F.relu(output)
-        print(output.size())
-        print(hidden.size())
         output, hidden = self.gru(output, hidden)
         output = self.softmax(self.out(output[0]))
         return output, hidden
@@ -81,24 +78,26 @@ teacher_forcing_ratio = 0.5
 
 
 def train(train_loader, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion, max_length=MAX_LENGTH):
-    encoder_hidden = encoder.initHidden()
-    
-    encoder_optimizer.zero_grad()
-    decoder_optimizer.zero_grad()
-    
-    encoder_outputs = Variable(torch.zeros(max_length, encoder.hidden_size))
-    encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
-    
     loss_all = 0
 
     for batch_idx, (fs, ts) in enumerate(train_loader):
+        current_batch_size = fs.size()[0]
+        encoder_hidden = encoder.initHidden(current_batch_size)
+    
+        encoder_optimizer.zero_grad()
+        decoder_optimizer.zero_grad()
+    
+        encoder_outputs = Variable(torch.zeros(max_length, encoder.hidden_size))
+        encoder_outputs = encoder_outputs.cuda() if use_cuda else encoder_outputs
+        
         loss = 0
+
         if use_cuda:
             fs, ts = fs.cuda(), ts.cuda()
         fs, ts = Variable(fs.transpose(0, 1)), Variable(ts.transpose(0, 1))
         encoder_output, encoder_hidden = encoder(fs, encoder_hidden)
         
-        decoder_input = Variable(torch.LongTensor(np.full((1, BATCH_SIZE), BOS_token)))
+        decoder_input = Variable(torch.LongTensor(np.full((1, current_batch_size), BOS_token)))
         if use_cuda:
             decoder_input = decoder_input.cuda()
     
@@ -115,6 +114,7 @@ def train(train_loader, encoder, decoder, encoder_optimizer, decoder_optimizer, 
                 if di != ts.size()[0] - 1:
                     decoder_input = ts[di+1].contiguous().view(1, -1)  # Teacher forcing
         else:
+            # -------------------------- HELP ---------------------------
             # Without teacher forcing: use its own predictions as the next input
             for di in range(ts.size()[0]):
                 decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
@@ -125,10 +125,9 @@ def train(train_loader, encoder, decoder, encoder_optimizer, decoder_optimizer, 
                 loss += criterion(decoder_output, ts[di])
                 if ni == EOS_token:
                     break
+            # ------------------------ END HELP -------------------------
         loss_all += loss.data[0]
-        print('--loss--')
-        print(loss)
-        loss.backward()
+        loss.backward(retain_graph=True)
         encoder_optimizer.step()
         decoder_optimizer.step()
 
@@ -142,7 +141,6 @@ def trainIters(encoder, decoder, n_iters, print_every=1000, plot_every=100, lear
     
     encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
     decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
-    #training_pairs = [variablesFromPair(random.choice(pairs)) for i in range(n_iters)]
     criterion = nn.NLLLoss()
     
     for iter in range(1, n_iters + 1):
@@ -150,19 +148,13 @@ def trainIters(encoder, decoder, n_iters, print_every=1000, plot_every=100, lear
         
         loss = train(train_loader, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
         print_loss_total += loss
-        #plot_loss_total += loss
         
         if iter % print_every == 0:
             print_loss_avg = print_loss_total / print_every
             print_loss_total = 0
-            print('%s (%d %d%%) %.4f' % (timeSince(start, iter / n_iters), iter, iter / n_iters * 100, print_loss_avg))
-        '''
-        if iter % plot_every == 0:
-            plot_loss_avg = plot_loss_total / plot_every
-            plot_losses.append(plot_loss_avg)
-            plot_loss_total = 0
-        '''    
-    #showPlot(plot_losses)
+            avg_epoch_time = (time.time() - start) / print_every
+            start = time.time()
+            print('Epoch: %d, Avg_Epoch_Time: %.4f, Loss: %.4f' % (iter, avg_epoch_time, print_loss_avg))
 
 hidden_size = 256
 encoder_input_size = feats.shape[2]
@@ -173,4 +165,4 @@ if use_cuda:
     encoder = encoder.cuda()
     decoder = decoder.cuda()
             
-trainIters(encoder, decoder, 75000, print_every=1000)
+trainIters(encoder, decoder, 75000, print_every=1)
