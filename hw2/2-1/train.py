@@ -165,4 +165,4 @@ if use_cuda:
     encoder = encoder.cuda()
     decoder = decoder.cuda()
             
-trainIters(encoder, decoder, 75000, print_every=1)
+trainIters(encoder, decoder, 75000, print_every=10)
