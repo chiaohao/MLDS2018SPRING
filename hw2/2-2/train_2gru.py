@@ -27,7 +27,7 @@ EOS_token = wd.w2n['{EOS}']
 
 BATCH_SIZE = 200
 hidden_size = 256
-learning_rate = 0.01
+learning_rate = 0.0025
 EPOCHS = 10
 
 def get_train_loader():
@@ -132,9 +132,22 @@ def train(train_loader, encoder, decoder, criterion, max_length=MAX_LENGTH):
     
         decoder_hidden1 = encoder_hidden1
         decoder_hidden2 = encoder_hidden2
-    
+
+        ## Word Teacher Forcing
+        for di in range(ts.size()[0]):
+            decoder_output, decoder_hidden1, decoder_hidden2 = decoder(decoder_input, decoder_hidden1, decoder_hidden2)
+            loss += criterion(decoder_output, ts[di])
+            use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
+            if use_teacher_forcing:
+                decoder_input = ts[di].contiguous().view(1, -1)
+            else:
+                topv, topi = decoder_output.data.topk(1)
+                decoder_input = Variable(topi.view(1, -1))
+        
+        '''
+        ## Batch Teacher Forcing
         use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
-            
+
         if use_teacher_forcing:
             # Teacher forcing: Feed the target as the next input
             for di in range(ts.size()[0]):
@@ -148,6 +161,7 @@ def train(train_loader, encoder, decoder, criterion, max_length=MAX_LENGTH):
                 topv, topi = decoder_output.data.topk(1)
                 decoder_input = Variable(topi.view(1, -1))
                 loss += criterion(decoder_output, ts[di])
+        '''
         loss_all += loss.data[0]
         loss.backward(retain_graph=True)
         encoder.optimizer.step()
