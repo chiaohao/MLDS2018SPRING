@@ -42,10 +42,10 @@ class Word_dict:
         f = open(file_name, 'r')
         lines = list(f.readlines())
         for l in lines:
-            tmp = l.replace('\n').split(' ')
+            tmp = l.replace('\n', '').split(' ')
             if len(tmp) == 2:
                 self.w2n[tmp[0]] = int(tmp[1])
-                self.n2w[int(tmp[1])] = tmp[2]
+                self.n2w[int(tmp[1])] = tmp[0]
 
 def load_sentences(path):
     f = open(path, 'r')
