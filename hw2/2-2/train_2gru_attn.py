@@ -18,18 +18,21 @@ from pprint import pprint
 wd = data_process.Word_dict()
 MAX_LENGTH = 15
 print('Start process raw data... ', end='')
-data = data_process.load_data('clr_conversation.txt', MAX_LENGTH, wd)
+data = data_process.load_data('clr_conversation.txt', MAX_LENGTH, wd, min_word_freq=5)
 print('Done!')
+print('Words in dict: %d' % len(wd.w2n))
+sys.stdout.flush()
 
 wd.save_dict('word_dict.txt')
 
 BOS_token = wd.w2n['{BOS}']
 EOS_token = wd.w2n['{EOS}']
+PAD_token = wd.w2n['{PAD}']
 
 BATCH_SIZE = 100
 hidden_size = 256
 learning_rate = 0.001
-EPOCHS = 2000
+EPOCHS = 750000
 
 xs = []
 ys = []
@@ -49,6 +52,10 @@ def get_train_data():
     for i in randints:
         _xs.append(xs[i])
         _ys.append(ys[i])
+    #max_len_xs = max([(list(_x) + [PAD_token]).index(PAD_token) for _x in _xs])
+    #max_len_ys = max([(list(_y) + [PAD_token]).index(PAD_token) for _y in _ys])
+    #_xs = [_x[:max_len_xs] for _x in _xs]
+    #_ys = [_y[:max_len_ys] for _y in _ys]
     _xs = torch.from_numpy(np.array(_xs).astype(np.float64)).long()
     _ys = torch.from_numpy(np.array(_ys).astype(np.float64)).long()
     return _xs, _ys
@@ -61,7 +68,7 @@ class EncoderRNN(nn.Module):
         self.gru1 = nn.GRU(hidden_size, hidden_size)
         self.gru2 = nn.GRU(hidden_size, hidden_size)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
-        #self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, 5)
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10000, gamma=0.5)
     
     def forward(self, input, hidden1, hidden2):
         output = self.embedding(input)
@@ -89,11 +96,11 @@ class DecoderRNN(nn.Module):
         self.out = nn.Linear(hidden_size, voc_size)
         self.softmax = nn.LogSoftmax(dim=1)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
-        #self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, 5)
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10000, gamma=0.5)
 
     def forward(self, input, hidden1, hidden2, encoder_outputs):
         output = self.embedding(input)
-        attn_weights = F.softmax(self.attn(torch.cat((output[0], hidden1[0]), 1)), dim=1)
+        attn_weights = F.softmax(self.attn(torch.cat((output[0], hidden2[0]), 1)), dim=1)
         attn_applied = torch.bmm(attn_weights.unsqueeze(1), encoder_outputs.transpose(0,1))
         output = torch.cat((output[0], attn_applied.transpose(0,1)[0]), 1)
         output = self.attn_combine(output).unsqueeze(0)
@@ -116,8 +123,8 @@ def train(encoder, decoder, criterion, max_length=MAX_LENGTH):
     sys.stdout.flush()
     fs, ts = get_train_data()
     
-    #encoder.scheduler.step()
-    #decoder.scheduler.step()
+    encoder.scheduler.step()
+    decoder.scheduler.step()
 
     current_batch_size = fs.size()[0]
     encoder_hidden1 = encoder.initHidden(current_batch_size)
@@ -174,8 +181,9 @@ def trainIters(encoder, decoder, n_iters, print_every=1000, plot_every=100):
             avg_epoch_time = (time.time() - start) / print_every
             start = time.time()
             print('Epoch: %d, Avg_Epoch_Time: %.4f, Loss: %.4f' % (iter, avg_epoch_time, print_loss_avg))
-        torch.save(encoder, 'encoder.pt')
-        torch.save(decoder, 'decoder.pt')
+        if iter % 10000 == 0:
+            torch.save(encoder, 'encoder.pt')
+            torch.save(decoder, 'decoder.pt')
 
 encoder = EncoderRNN(hidden_size, len(wd.w2n))
 decoder = DecoderRNN(hidden_size, len(wd.w2n))
@@ -184,5 +192,5 @@ if use_cuda:
     encoder = encoder.cuda()
     decoder = decoder.cuda()
 
-trainIters(encoder, decoder, EPOCHS, print_every=1)
+trainIters(encoder, decoder, EPOCHS, print_every=100)
 

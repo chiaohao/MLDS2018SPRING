@@ -2,6 +2,7 @@ import os
 import numpy as np
 import json
 from pprint import pprint
+import operator
 
 class Word_dict:
     def __init__(self):
@@ -18,6 +19,21 @@ class Word_dict:
                     _id = len(self.n2w)
                     self.w2n[word] = _id
                     self.n2w[_id] = word
+    def add_sentences_min_freq(self, sentences, min_word_freq):
+        wc = {}
+        for s in sentences:
+            words = s.lower().replace('\n', '').split(' ')
+            words = list(filter(None, words))
+            for word in words:
+                if word not in wc:
+                    wc[word] = 1
+                else:
+                    wc[word] += 1
+        for word in wc:
+            if wc[word] >= min_word_freq:
+                _id = len(self.n2w)
+                self.w2n[word] = _id
+                self.n2w[_id] = word
     def word2number(self, word):
         return self.w2n[word] if word in self.w2n else self.w2n['{UNK}']
     def number2word(self, number):
@@ -63,11 +79,15 @@ def load_sentences(path):
             tmp = []
     return sentences_group
 
-def load_data(path, max_length, _wd, is_add_words=True):
+def load_data(path, max_length, _wd, min_word_freq=None, is_add_words=True):
     sentences = load_sentences(path)
     if is_add_words:
-        for ss in sentences:
-            _wd.add_sentences(ss)
+        if min_word_freq == None:
+            for ss in sentences:
+                _wd.add_sentences(ss)
+        elif min_word_freq > 0:
+            _sentences = [s for ss in sentences for s in ss]
+            _wd.add_sentences_min_freq(_sentences, min_word_freq)
     ps = []
     for ss in sentences:
         ps.append([_wd.sentence2number(s, max_length) for s in ss])

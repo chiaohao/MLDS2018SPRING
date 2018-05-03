@@ -39,14 +39,14 @@ class EncoderRNN(nn.Module):
         self.gru1 = nn.GRU(hidden_size, hidden_size)
         self.gru2 = nn.GRU(hidden_size, hidden_size)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10000, gamma=0.5)
-
+        #self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, 5)
+    
     def forward(self, input, hidden1, hidden2):
         output = self.embedding(input)
         output = F.selu(output)
         output1, hidden1 = self.gru1(output, hidden1)
         output2, hidden2 = self.gru2(output1, hidden2)
-        return hidden1, hidden2, output2
+        return hidden1, hidden2
 
     def initHidden(self, batch_size):
         result = Variable(torch.zeros(1, batch_size, self.hidden_size))
@@ -60,21 +60,15 @@ class DecoderRNN(nn.Module):
         super(DecoderRNN, self).__init__()
         self.hidden_size = hidden_size
         self.embedding = nn.Embedding(voc_size, hidden_size)
-        self.attn = nn.Linear(self.hidden_size * 2, MAX_LENGTH)
-        self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
         self.gru1 = nn.GRU(hidden_size, hidden_size)
         self.gru2 = nn.GRU(hidden_size, hidden_size)
         self.out = nn.Linear(hidden_size, voc_size)
         self.softmax = nn.LogSoftmax(dim=1)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10000, gamma=0.5)
+        #self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, 5)
 
-    def forward(self, input, hidden1, hidden2, encoder_outputs):
+    def forward(self, input, hidden1, hidden2):
         output = self.embedding(input)
-        attn_weights = F.softmax(self.attn(torch.cat((output[0], hidden2[0]), 1)), dim=1)
-        attn_applied = torch.bmm(attn_weights.unsqueeze(1), encoder_outputs.transpose(0,1))
-        output = torch.cat((output[0], attn_applied.transpose(0,1)[0]), 1)
-        output = self.attn_combine(output).unsqueeze(0)
         output = F.selu(output)
         output1, hidden1 = self.gru1(output, hidden1)
         output2, hidden2 = self.gru2(output1, hidden2)
@@ -97,7 +91,7 @@ def test(_td, encoder, decoder, max_length=MAX_LENGTH):
     encoder_hidden2 = encoder.initHidden(current_batch_size)
     
     td = td.transpose(0, 1)
-    encoder_hidden1, encoder_hidden2, encoder_outputs = encoder(td, encoder_hidden1, encoder_hidden2)
+    encoder_hidden1, encoder_hidden2 = encoder(td, encoder_hidden1, encoder_hidden2)
     
     decoder_input = Variable(torch.LongTensor(np.full((1, current_batch_size), BOS_token)))
     if use_cuda:
@@ -109,7 +103,7 @@ def test(_td, encoder, decoder, max_length=MAX_LENGTH):
     r = decoder_input
 
     for di in range(td.size()[0]):
-        decoder_output, decoder_hidden1, decoder_hidden2 = decoder(decoder_input, decoder_hidden1, decoder_hidden2, encoder_outputs)
+        decoder_output, decoder_hidden1, decoder_hidden2 = decoder(decoder_input, decoder_hidden1, decoder_hidden2)
         topv, topi = decoder_output.data.topk(1)
         decoder_input = Variable(topi.view(1, -1))
         r = torch.cat((r, decoder_input), dim=0)
