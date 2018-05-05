@@ -15,33 +15,40 @@ import random
 import data_process
 from pprint import pprint
 
+prefix = sys.argv[1]
+MIN_WORD_FREQ = int(sys.argv[2])
+TEACHER_FORCING_RATIO = float(sys.argv[3])
+
 wd = data_process.Word_dict()
 MAX_LENGTH = 15
 print('Start process raw data... ', end='')
-data = data_process.load_data('clr_conversation.txt', MAX_LENGTH, wd, min_word_freq=5)
+data = data_process.load_data('clr_conversation.txt', MAX_LENGTH, wd, min_word_freq=MIN_WORD_FREQ)
 print('Done!')
 print('Words in dict: %d' % len(wd.w2n))
 sys.stdout.flush()
 
-wd.save_dict('word_dict.txt')
+wd.save_dict('word_dict_%s.txt' % prefix)
 
 BOS_token = wd.w2n['{BOS}']
 EOS_token = wd.w2n['{EOS}']
 PAD_token = wd.w2n['{PAD}']
+UNK_token = wd.w2n['{UNK}']
 
 BATCH_SIZE = 100
-hidden_size = 256
+hidden_size = 800
 learning_rate = 0.001
-EPOCHS = 750000
+EPOCHS = 200000
 
 xs = []
 ys = []
 for sect in data:
     for i in range(len(sect)):
         if i < len(sect) - 1:
-            xs.append(sect[i])
-            ys.append(sect[i + 1])
+            if list(sect[i]).count(UNK_token) / ((list(sect[i]) + [EOS_token]).index(EOS_token) + 1) < 0.2 and list(sect[i + 1]).count(UNK_token) / ((list(sect[i + 1]) + [EOS_token]).index(EOS_token) + 1) < 0.2:
+                xs.append(sect[i])
+                ys.append(sect[i + 1])
 data_count = len(xs)
+print('Reduced Data Count: %d' % data_count)
 #xs = torch.from_numpy(np.array(xs).astype(np.float64)).long()
 #ys = torch.from_numpy(np.array(ys).astype(np.float64)).long()
 
@@ -68,7 +75,7 @@ class EncoderRNN(nn.Module):
         self.gru1 = nn.GRU(hidden_size, hidden_size)
         self.gru2 = nn.GRU(hidden_size, hidden_size)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10000, gamma=0.5)
+        #self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10000, gamma=0.5)
     
     def forward(self, input, hidden1, hidden2):
         output = self.embedding(input)
@@ -96,7 +103,7 @@ class DecoderRNN(nn.Module):
         self.out = nn.Linear(hidden_size, voc_size)
         self.softmax = nn.LogSoftmax(dim=1)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10000, gamma=0.5)
+        #self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10000, gamma=0.5)
 
     def forward(self, input, hidden1, hidden2, encoder_outputs):
         output = self.embedding(input)
@@ -116,15 +123,12 @@ class DecoderRNN(nn.Module):
         else:
             return result
 
-teacher_forcing_ratio = 0.5
-
-
 def train(encoder, decoder, criterion, max_length=MAX_LENGTH):
     sys.stdout.flush()
     fs, ts = get_train_data()
     
-    encoder.scheduler.step()
-    decoder.scheduler.step()
+    #encoder.scheduler.step()
+    #decoder.scheduler.step()
 
     current_batch_size = fs.size()[0]
     encoder_hidden1 = encoder.initHidden(current_batch_size)
@@ -151,7 +155,7 @@ def train(encoder, decoder, criterion, max_length=MAX_LENGTH):
     for di in range(ts.size()[0]):
         decoder_output, decoder_hidden1, decoder_hidden2 = decoder(decoder_input, decoder_hidden1, decoder_hidden2, encoder_outputs)
         loss += criterion(decoder_output, ts[di])
-        use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
+        use_teacher_forcing = True if random.random() < TEACHER_FORCING_RATIO else False
         if use_teacher_forcing:
             decoder_input = ts[di].contiguous().view(1, -1)
         else:
@@ -182,8 +186,8 @@ def trainIters(encoder, decoder, n_iters, print_every=1000, plot_every=100):
             start = time.time()
             print('Epoch: %d, Avg_Epoch_Time: %.4f, Loss: %.4f' % (iter, avg_epoch_time, print_loss_avg))
         if iter % 10000 == 0:
-            torch.save(encoder, 'encoder.pt')
-            torch.save(decoder, 'decoder.pt')
+            torch.save(encoder, 'encoder_%s.pt' % prefix)
+            torch.save(decoder, 'decoder_%s.pt' % prefix)
 
 encoder = EncoderRNN(hidden_size, len(wd.w2n))
 decoder = DecoderRNN(hidden_size, len(wd.w2n))

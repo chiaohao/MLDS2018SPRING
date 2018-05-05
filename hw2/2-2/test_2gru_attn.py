@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import torch.utils.data as Data
 import numpy as np
 import sys
+import math
 
 use_cuda = torch.cuda.is_available()
 
@@ -15,14 +16,20 @@ import random
 import data_process
 from pprint import pprint
 
-hidden_size = 256
+USE_BEAM = True
+BEAM_NORM = True
+
+hidden_size = 800
 MAX_LENGTH = 15
 BATCH_SIZE = 100
+if USE_BEAM:
+    BATCH_SIZE = 1
 learning_rate = 0.001
 
 wd = data_process.Word_dict()
 wd.load_dict(sys.argv[1])
 BOS_token = wd.w2n['{BOS}']
+PAD_token = wd.w2n['{PAD}']
 EOS_token = wd.w2n['{EOS}']
 
 def read_data(file_name, _wd):
@@ -39,8 +46,8 @@ class EncoderRNN(nn.Module):
         self.gru1 = nn.GRU(hidden_size, hidden_size)
         self.gru2 = nn.GRU(hidden_size, hidden_size)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10000, gamma=0.5)
-
+        #self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10000, gamma=0.5)
+    
     def forward(self, input, hidden1, hidden2):
         output = self.embedding(input)
         output = F.selu(output)
@@ -67,7 +74,7 @@ class DecoderRNN(nn.Module):
         self.out = nn.Linear(hidden_size, voc_size)
         self.softmax = nn.LogSoftmax(dim=1)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10000, gamma=0.5)
+        #self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=10000, gamma=0.5)
 
     def forward(self, input, hidden1, hidden2, encoder_outputs):
         output = self.embedding(input)
@@ -87,7 +94,7 @@ class DecoderRNN(nn.Module):
         else:
             return result
 
-def test(_td, encoder, decoder, max_length=MAX_LENGTH):
+def test(_td, encoder, decoder, max_length=MAX_LENGTH, beam_size=4):
     td = Variable(torch.from_numpy(_td)).long()
     if use_cuda:
         td = td.cuda()
@@ -105,16 +112,41 @@ def test(_td, encoder, decoder, max_length=MAX_LENGTH):
         
     decoder_hidden1 = encoder_hidden1
     decoder_hidden2 = encoder_hidden2
-    
-    r = decoder_input
 
-    for di in range(td.size()[0]):
-        decoder_output, decoder_hidden1, decoder_hidden2 = decoder(decoder_input, decoder_hidden1, decoder_hidden2, encoder_outputs)
-        topv, topi = decoder_output.data.topk(1)
-        decoder_input = Variable(topi.view(1, -1))
-        r = torch.cat((r, decoder_input), dim=0)
+    result = decoder_input
     
-    return r
+    if not USE_BEAM:
+        for di in range(td.size()[0]):
+            decoder_output, decoder_hidden1, decoder_hidden2 = decoder(decoder_input, decoder_hidden1, decoder_hidden2, encoder_outputs)
+            topv, topi = decoder_output.data.topk(1)
+            decoder_input = Variable(topi.view(1, -1))
+            result = torch.cat((result, decoder_input), dim=0)
+    else:
+        previous_states = [(decoder_input, decoder_hidden1, decoder_hidden2, 0, [])]
+        for _iter in range(td.size()[0]):
+            next_states = []
+            while len(previous_states) > 0:
+                decoder_input, decoder_hidden1, decoder_hidden2, all_val, all_id= previous_states.pop(0)
+                decoder_output, decoder_hidden1, decoder_hidden2 = decoder(decoder_input, decoder_hidden1, decoder_hidden2, encoder_outputs)
+                val, idx = decoder_output.data.topk(beam_size)
+                for i in range(beam_size):
+                    decoder_input = Variable(idx.transpose(0,1)[i].contiguous().view(1,-1))
+                    tmp = all_id[:]
+                    tmp.append(idx.transpose(0,1)[i].cpu().numpy()[0])
+                    if BEAM_NORM:
+                        _all_val = (all_val * (len(tmp) - 1) + val.transpose(0,1)[i].cpu().numpy()) / len(tmp) if EOS_token not in tmp else all_val
+                        next_states.append((decoder_input, decoder_hidden1, decoder_hidden2, _all_val, tmp))
+                    else:
+                        next_states.append((decoder_input, decoder_hidden1, decoder_hidden2, all_val+val.transpose(0,1)[i].cpu().numpy(), tmp))
+
+            next_states.sort(key=lambda tup: tup[3])
+            next_states.reverse()
+            previous_states = next_states[:beam_size]
+        
+        previous_states.sort(key=lambda tup: tup[3], reverse=True)
+        result = previous_states[0][4]
+
+    return result
 
 def test_iter(_tds, encoder, decoder):
     iters = int(len(_tds) / BATCH_SIZE)
@@ -122,11 +154,12 @@ def test_iter(_tds, encoder, decoder):
         iters += 1
     result = []
     for i in range(iters):
+        print('iter %d/%d\r' % (i, iters), end='')
         td = _tds[i * BATCH_SIZE:(i + 1) * BATCH_SIZE]
         r = test(td, encoder, decoder)
         result.append(r)
-    
-    result = [j for i in result for j in i.transpose(0, 1).cpu().data]
+    if not USE_BEAM:
+        result = [j for i in result for j in i.transpose(0, 1).cpu().data]
 
     return result
 
@@ -142,18 +175,20 @@ print('Done!')
 if use_cuda:
     encoder = encoder.cuda()
     decoder = decoder.cuda()
-print('Start testing...', end='')
+print('Start testing...')
 result = test_iter(test_data, encoder, decoder)
-print('Done!')
+print('\nDone!')
 
 result = [[wd.number2word(j) for j in i] for i in result]
 output_result = []
+f = open('test_output.txt', 'w')
 for r in result:
     o = []
     for i in r:
-        if i != '{BOS}' and i != '{EOS}' and i != '{PAD}':
+        if i != '{BOS}' and i != '{EOS}' and i != '{PAD}' and i != '{UNK}':
             o.append(i)
+    f.write(' '.join(o) + '\n')
     o = ''.join(o)
     output_result.append(o)
 
-print(output_result)
+#print(output_result)
