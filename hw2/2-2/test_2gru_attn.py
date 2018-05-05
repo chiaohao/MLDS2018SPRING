@@ -185,6 +185,8 @@ f = open('test_output.txt', 'w')
 for r in result:
     o = []
     for i in r:
+        if i == '{EOS}':
+            break
         if i != '{BOS}' and i != '{EOS}' and i != '{PAD}' and i != '{UNK}':
             o.append(i)
     f.write(' '.join(o) + '\n')
