@@ -16,8 +16,16 @@ import random
 import data_process
 from pprint import pprint
 
-USE_BEAM = True
-BEAM_NORM = True
+word_dict_path = sys.argv[1]
+encoder_path = sys.argv[2]
+decoder_path = sys.argv[3]
+test_input_path = sys.argv[4]
+test_output_path = sys.argv[5]
+is_beamforming = sys.argv[6]
+is_beamnorm = sys.argv[7]
+
+USE_BEAM = bool(int(is_beamforming))
+BEAM_NORM = bool(int(is_beamnorm))
 
 hidden_size = 800
 MAX_LENGTH = 15
@@ -163,13 +171,13 @@ def test_iter(_tds, encoder, decoder):
 
     return result
 
-test_data = read_data(sys.argv[4], wd)
+test_data = read_data(test_input_path, wd)
 
 print('Load encoder/decoder... ', end='')
 encoder = EncoderRNN(hidden_size, len(wd.w2n))
 decoder = DecoderRNN(hidden_size, len(wd.w2n))
-encoder = torch.load(sys.argv[2])
-decoder = torch.load(sys.argv[3])
+encoder = torch.load(encoder_path)
+decoder = torch.load(decoder_path)
 print('Done!')
 
 if use_cuda:
@@ -181,7 +189,7 @@ print('\nDone!')
 
 result = [[wd.number2word(j) for j in i] for i in result]
 output_result = []
-f = open('test_output.txt', 'w')
+f = open(test_output_path, 'w')
 for r in result:
     o = []
     for i in r:
@@ -189,6 +197,8 @@ for r in result:
             break
         if i != '{BOS}' and i != '{EOS}' and i != '{PAD}' and i != '{UNK}':
             o.append(i)
+    if len(o) == 0:
+        o.append('我')
     f.write(' '.join(o) + '\n')
     o = ''.join(o)
     output_result.append(o)
