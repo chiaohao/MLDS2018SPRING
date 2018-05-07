@@ -15,9 +15,11 @@ import random
 import data_process
 from pprint import pprint
 
-prefix = sys.argv[1]
-MIN_WORD_FREQ = int(sys.argv[2])
-TEACHER_FORCING_RATIO = float(sys.argv[3])
+prefix = ''
+MIN_WORD_FREQ = int(sys.argv[1])
+TEACHER_FORCING_RATIO = float(sys.argv[2])
+if len(sys.argv) >= 4:
+    prefix = sys.argv[3]
 
 wd = data_process.Word_dict()
 MAX_LENGTH = 15
