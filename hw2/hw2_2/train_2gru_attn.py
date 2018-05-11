@@ -16,15 +16,15 @@ import data_process
 from pprint import pprint
 
 prefix = ''
-MIN_WORD_FREQ = int(sys.argv[1])
-TEACHER_FORCING_RATIO = float(sys.argv[2])
-if len(sys.argv) >= 4:
-    prefix = sys.argv[3]
+MIN_WORD_FREQ = int(sys.argv[2])
+TEACHER_FORCING_RATIO = float(sys.argv[3])
+if len(sys.argv) >= 5:
+    prefix = sys.argv[4]
 
 wd = data_process.Word_dict()
 MAX_LENGTH = 15
 print('Start process raw data... ', end='')
-data = data_process.load_data('clr_conversation.txt', MAX_LENGTH, wd, min_word_freq=MIN_WORD_FREQ)
+data = data_process.load_data(sys.argv[1], MAX_LENGTH, wd, min_word_freq=MIN_WORD_FREQ)
 print('Done!')
 print('Words in dict: %d' % len(wd.w2n))
 sys.stdout.flush()
