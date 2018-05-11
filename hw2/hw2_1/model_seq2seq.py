@@ -11,17 +11,24 @@ import time
 import numpy as np
 import pickle as pk
 import math
+import sys
 
 MAX_LENGTH = 15
 wd = Word_dict()
-folder = 'origin/'
+folder = './'
 
-features, labels = load_data('../../../../MLDS_hw2_1_data/training_label.json', '../../../../MLDS_hw2_1_data/training_data/feat', wd, MAX_LENGTH)
+training_labels = sys.argv[1]
+training_feats = sys.argv[2]
+testing_labels = sys.argv[3]
+testing_feats = sys.argv[4]
+result_path = sys.argv[5]
+
+features, labels = load_data(training_labels, training_feats, wd, MAX_LENGTH)
 
 with open('wd.pkl', 'wb') as word_dict:
     pk.dump(wd, word_dict, pk.HIGHEST_PROTOCOL)
 
-features_t, labels_t = load_data('../../../../MLDS_hw2_1_data/testing_label.json', '../../../../MLDS_hw2_1_data/testing_data/feat', wd, MAX_LENGTH, False)
+features_t, labels_t = load_data(testing_labels, testing_feats, wd, MAX_LENGTH, False)
 INPUT_SIZE = features.shape[2]
 HIDDEN_SIZE = 256
 EPOCH = 200
@@ -179,9 +186,8 @@ def history_save(history, epoch, d=5, attn='attn', min_count=0):
         pk.dump(history, hist_f)
 
 def result_save(result):
-    text = folder + 'result.txt'
-    with open( text, 'w') as file:
-        labels = load_label('../../../../MLDS_hw2_1_data/testing_label.json')
+    with open(result, 'w') as file:
+        labels = load_label(testing_labels)
         for i, lb in enumerate(labels):
             file.write(lb['id'] + ',' + result_c[i]+'\n')
 
@@ -208,5 +214,5 @@ for r in result:
     r = r[:ptr]
     result_c.append(' '.join(r).rstrip())
 
-result_save(result_c)
+result_save(result_path)
 
