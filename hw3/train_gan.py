@@ -20,7 +20,7 @@ from pprint import pprint
 
 EPOCHS = 10000
 BATCH_SIZE = 256
-NOISE_SIZE = 256
+NOISE_SIZE = 100
 LEARNING_RATE = 0.0002
 LEARNING_RATE_BETA = (0.5, 0.999)
 
@@ -43,7 +43,8 @@ def save_imgs(generator, _iter):
 
 def get_train_loader(images_path):
     print('Start pack to DataLoader... ', end='')
-    xs = torch.from_numpy(np.array([skio.imread(images_path + '/' + image_name) for image_name in os.listdir(images_path)], dtype=np.float32)).transpose(2, 3).transpose(1, 2)
+    xs = np.array([skio.imread(images_path + '/' + image_name) for image_name in os.listdir(images_path)], dtype=np.float32)
+    xs = torch.from_numpy(xs / 255.0).transpose(2, 3).transpose(1, 2)
     ys = torch.ones(xs.size()[0])
     
     torch_dataset = Data.TensorDataset(data_tensor=xs, target_tensor=ys)
@@ -67,6 +68,8 @@ def weights_init(m):
 class Generator(nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
+        self.prelinear = nn.Linear(NOISE_SIZE, 256)
+        self.preselu = nn.SELU(True)
         self.conv1 = nn.ConvTranspose2d(256, 128, 4, 1, 0, bias = False)
         self.batch1 = nn.BatchNorm2d(128)
         self.selu1 = nn.SELU(True)
@@ -80,7 +83,8 @@ class Generator(nn.Module):
         self.out = nn.Tanh()
 
     def forward(self, input):
-        output = input.view(input.size(0), 256, 1, 1)
+        output = self.preselu(self.prelinear(input))
+        output = output.view(input.size(0), 256, 1, 1)
         output = self.selu1(self.batch1(self.conv1(output)))
         output = self.selu2(self.batch2(self.conv2(output)))
         output = self.selu3(self.batch3(self.conv3(output)))
@@ -127,6 +131,7 @@ def train(_iter, _generator, _discriminator, _optimG, _optimD, _criterion, _trai
             labels = labels.cuda()
         output = _discriminator(reals)
         errD_real = _criterion(output, labels)
+        errD_real.backward()
     
         noise = torch.from_numpy(np.random.normal(0, 1, (_xs.size()[0], NOISE_SIZE)))
         #noise = torch.randn(_xs.size()[0], NOISE_SIZE)
@@ -136,12 +141,11 @@ def train(_iter, _generator, _discriminator, _optimG, _optimD, _criterion, _trai
             noise = noise.cuda()
             fakes_labels = fakes_labels.cuda()
         fakes = _generator(noise)
-        output = _discriminator(fakes)
-        #output = _discriminator(fakes.detach())
+        output = _discriminator(fakes.detach())
         errD_fake = _criterion(output, fakes_labels)
+        errD_fake.backward()
 
-        errD_all = (errD_real + errD_fake)
-        errD_all.backward()
+        errD_all = errD_real + errD_fake
         _optimD.step()
     
         # Train Generator
@@ -156,8 +160,8 @@ def train(_iter, _generator, _discriminator, _optimG, _optimD, _criterion, _trai
         fakes = _generator(noise)
         output = _discriminator(fakes)
         errG = _criterion(output, fakes_labels)
+        errG.backward()
         errG_all = errG
-        errG_all.backward()
         _optimG.step()
     
     return errD_all.data[0], errG_all.data[0]
