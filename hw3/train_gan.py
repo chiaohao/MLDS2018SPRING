@@ -8,6 +8,8 @@ import torch.nn.functional as F
 import torch.utils.data as Data
 import numpy as np
 from skimage import io as skio
+from skimage.transform import resize
+
 import os
 import matplotlib.pyplot as plt
 
@@ -23,6 +25,8 @@ BATCH_SIZE = 256
 NOISE_SIZE = 100
 LEARNING_RATE = 0.0002
 LEARNING_RATE_BETA = (0.5, 0.999)
+USE_EXTRA_DATA = True
+#USE_ADDITIVE_NOISE = True
 
 def save_imgs(generator, _iter):
     r, c = 5, 5
@@ -41,10 +45,15 @@ def save_imgs(generator, _iter):
     fig.savefig("output_imgs/output_%d.png" % _iter)
     plt.close()
 
-def get_train_loader(images_path):
+def get_train_loader(images_path, ex_images_path=''):
     print('Start pack to DataLoader... ', end='')
-    xs = np.array([skio.imread(images_path + '/' + image_name) for image_name in os.listdir(images_path)], dtype=np.float32)
-    xs = torch.from_numpy((xs / 255.0) * 2.0 - 1.0).transpose(2, 3).transpose(1, 2)
+    xs = np.array([resize(skio.imread(images_path + '/' + image_name) / 255.0, (64, 64)) for image_name in os.listdir(images_path)], dtype=np.float32)
+    print(xs)
+    if USE_EXTRA_DATA:
+        xs_ = np.array([resize(skio.imread(ex_images_path + '/' + image_name) / 255.0, (64, 64)) for image_name in os.listdir(ex_images_path)], dtype=np.float32)
+        xs = np.concatenate((xs, xs_), axis=0)
+
+    xs = torch.from_numpy(xs * 2.0 - 1.0).transpose(2, 3).transpose(1, 2)
     ys = torch.ones(xs.size()[0])
     
     torch_dataset = Data.TensorDataset(data_tensor=xs, target_tensor=ys)
@@ -68,23 +77,23 @@ def weights_init(m):
 class Generator(nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
-        self.prelinear = nn.Linear(NOISE_SIZE, 512)
+        self.prelinear = nn.Linear(NOISE_SIZE, 8192)
         self.preselu = nn.SELU(True)
-        self.conv1 = nn.ConvTranspose2d(512, 256, 4, 1, 0, bias = False)
+        self.conv1 = nn.ConvTranspose2d(512, 256, 4, 2, 1, bias = False)
         self.batch1 = nn.BatchNorm2d(256)
         self.selu1 = nn.SELU(True)
-        self.conv2 = nn.ConvTranspose2d(256, 128, 4, 2, 0, bias = False)
+        self.conv2 = nn.ConvTranspose2d(256, 128, 4, 2, 1, bias = False)
         self.batch2 = nn.BatchNorm2d(128)
         self.selu2 = nn.SELU(True)
-        self.conv3 = nn.ConvTranspose2d(128, 64, 5, 3, 0, bias = False)
+        self.conv3 = nn.ConvTranspose2d(128, 64, 4, 2, 1, bias = False)
         self.batch3 = nn.BatchNorm2d(64)
         self.selu3 = nn.SELU(True)
-        self.conv4 = nn.ConvTranspose2d(64, 3, 3, 3, 0, bias = False)
+        self.conv4 = nn.ConvTranspose2d(64, 3, 4, 2, 1, bias = False)
         self.out = nn.Tanh()
 
     def forward(self, input):
         output = self.preselu(self.prelinear(input))
-        output = output.view(input.size(0), 512, 1, 1)
+        output = output.view(input.size(0), 512, 4, 4)
         output = self.selu1(self.batch1(self.conv1(output)))
         output = self.selu2(self.batch2(self.conv2(output)))
         output = self.selu3(self.batch3(self.conv3(output)))
@@ -94,19 +103,19 @@ class Generator(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
-        self.conv1 = nn.Conv2d(3, 32, 4, 3, 0, bias = False)
+        self.conv1 = nn.Conv2d(3, 32, 4, 2, 1, bias = False)
         self.batch1 = nn.BatchNorm2d(32)
         self.selu1 = nn.SELU(True)
-        self.conv2 = nn.Conv2d(32, 64, 4, 3, 0, bias = False)
+        self.conv2 = nn.Conv2d(32, 64, 4, 2, 1, bias = False)
         self.batch2 = nn.BatchNorm2d(64)
         self.selu2 = nn.SELU(True)
-        self.conv3 = nn.Conv2d(64, 128, 3, 2, 0, bias = False)
+        self.conv3 = nn.Conv2d(64, 128, 4, 2, 1, bias = False)
         self.batch3 = nn.BatchNorm2d(128)
         self.selu3 = nn.SELU(True)
-        self.conv4 = nn.Conv2d(128, 256, 3, 1, 0, bias = False)
+        self.conv4 = nn.Conv2d(128, 256, 4, 2, 1, bias = False)
         self.batch4 = nn.BatchNorm2d(256)
         self.selu4 = nn.SELU(True)
-        self.linear = nn.Linear(1024, 1)
+        self.linear = nn.Linear(4096, 1)
         self.out = nn.Sigmoid()
 
     def forward(self, input):
@@ -128,9 +137,15 @@ def train(_iter, _generator, _discriminator, _optimG, _optimD, _criterion, _trai
         _discriminator.zero_grad()
         reals = Variable(_xs)
         labels = Variable(_ys).float()
+        #additive_noise = Variable(torch.FloatTensor(_xs.size()[0], 3, 96, 96))
+
         if use_cuda:
             reals = reals.cuda()
             labels = labels.cuda()
+            #additive_noise = additive_noise.cuda()
+        #if USE_ADDITIVE_NOISE:
+        #    additive_noise.data.resize_(reals.size()).normal_(0, 0.005)
+        #    reals.data.add_(additive_noise.data)
         output = _discriminator(reals)
         errD_real = _criterion(output, labels)
     
@@ -178,12 +193,12 @@ def trainIters(_generator, _discriminator, _optimG, _optimD, _criterion, _train_
             avg_epoch_time = (time.time() - start) / print_every
             start = time.time()
             print('Epoch: %d, Avg_Epoch_Time: %.4f, LossD: %.4f, LossG: %.4f' % (iter, avg_epoch_time, lossD, lossG))
-        if iter % 100 == 0:
+        if iter % 50 == 0:
             save_imgs(_generator, iter)
             torch.save(generator, 'generator.pt')
             torch.save(discriminator, 'discriminator.pt')
         
-train_loader = get_train_loader('AnimeDataset/faces/')
+train_loader = get_train_loader('AnimeDataset/faces/', 'AnimeDataset/extra_data/images/')
 generator = Generator()
 generator.apply(weights_init)
 discriminator = Discriminator()
