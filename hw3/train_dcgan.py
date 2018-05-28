@@ -20,7 +20,7 @@ import random
 
 from pprint import pprint
 
-EPOCHS = 10000
+EPOCHS = 300
 BATCH_SIZE = 256
 NOISE_SIZE = 100
 LEARNING_RATE = 0.0002
@@ -48,7 +48,6 @@ def save_imgs(generator, _iter):
 def get_train_loader(images_path, ex_images_path=''):
     print('Start pack to DataLoader... ', end='')
     xs = np.array([resize(skio.imread(images_path + '/' + image_name) / 255.0, (64, 64)) for image_name in os.listdir(images_path)], dtype=np.float32)
-    print(xs)
     if USE_EXTRA_DATA:
         xs_ = np.array([resize(skio.imread(ex_images_path + '/' + image_name) / 255.0, (64, 64)) for image_name in os.listdir(ex_images_path)], dtype=np.float32)
         xs = np.concatenate((xs, xs_), axis=0)
