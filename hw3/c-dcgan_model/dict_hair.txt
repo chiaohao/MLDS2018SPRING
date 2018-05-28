@@ -1,0 +1,13 @@
+pink 11
+{UNK} 0
+green 3
+blonde 8
+orange 4
+aqua 1
+brown 10
+gray 2
+red 5
+purple 12
+white 6
+blue 9
+black 7

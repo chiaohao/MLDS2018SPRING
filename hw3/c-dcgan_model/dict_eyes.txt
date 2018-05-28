@@ -1,0 +1,11 @@
+aqua 1
+brown 4
+pink 7
+{UNK} 0
+yellow 10
+red 9
+green 5
+purple 8
+blue 3
+orange 6
+black 2
