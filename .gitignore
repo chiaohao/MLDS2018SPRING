@@ -1,7 +1,5 @@
 .DS_Store
 *.gz
-*.png
-*.jpg
 *.swp
 **/data/
 **/__pycache__
