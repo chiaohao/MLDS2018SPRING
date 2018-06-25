@@ -57,6 +57,33 @@ class DQN(nn.Module):
         x = F.relu(self.fc4(x.view(x.size(0), -1)))
         return self.fc5(x)
 
+class Dueling_DQN(nn.Module):
+    def __init__(self, in_channels=4, num_actions=4):
+        super(Dueling_DQN, self).__init__()
+        self.num_actions = 4
+        self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=8, stride=4)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
+        self.fc1_adv = nn.Linear(7 * 7 * 64, 512)
+        self.fc1_val = nn.Linear(7 * 7 * 64, 512)
+        self.fc2_adv = nn.Linear(512, num_actions)
+        self.fc2_val = nn.Linear(512, 1)
+
+    def forward(self, x):
+        x = torch.transpose(torch.transpose(x, 1, 3), 2, 3)
+        batch_size = x.size(0)
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = x.view(x.size(0), -1)
+        
+        adv = F.relu(self.fc1_adv(x))
+        val = F.relu(self.fc1_val(x))
+        adv = self.fc2_adv(adv)
+        val = self.fc2_val(val).expand(x.size(0), self.num_actions)
+        x = val + adv - adv.mean(1).unsqueeze(1).expand(x.size(0), self.num_actions)
+        return x
+
 class Agent_DQN(Agent):
     def __init__(self, env, args):
         """
@@ -66,6 +93,7 @@ class Agent_DQN(Agent):
         super(Agent_DQN,self).__init__(env)
         self.use_cuda = torch.cuda.is_available()
         self.env = env
+        self.dueling_dqn = True
         self.replay_buffer_size = 10000
         self.batch_size = 32
         self.gamma = 0.99
@@ -78,9 +106,16 @@ class Agent_DQN(Agent):
         self.update_times = 0
         self.update_freq = 4
         self.target_update_freq = 1000
+        
+        if self.dueling_dqn:
+            self.name = 'dueling_dqn_params.pt'
+            self.Q = Dueling_DQN(num_actions=self.num_actions)
+            self.target_Q = Dueling_DQN(num_actions=self.num_actions)
+        else:
+            self.name = 'dqn_params.pt'
+            self.Q = DQN(num_actions=self.num_actions)
+            self.target_Q = DQN(num_actions=self.num_actions)
 
-        self.Q = DQN(num_actions=self.num_actions)
-        self.target_Q = DQN(num_actions=self.num_actions)
         if self.use_cuda:
             self.Q = self.Q.cuda()
             self.target_Q = self.target_Q.cuda()
@@ -90,7 +125,7 @@ class Agent_DQN(Agent):
 
         if args.test_dqn:
             #you can load your model here
-            self.Q.load_state_dict(torch.load('dqn_params.pt'))
+            self.Q.load_state_dict(torch.load(self.name))
             print('loading trained model')
 
     def init_game_setting(self):
@@ -163,11 +198,13 @@ class Agent_DQN(Agent):
             if len(total_reward_log) >= 100:
                 mean_total_reward = sum(total_reward_log) / float(len(total_reward_log))
                 max_reward = np.max(total_reward_log)
-                print('Ep %d Up %d: mean reward %.2f, max_reward %.1f' % (self.i_episode, self.update_times, mean_total_reward, max_reward))
+                actual_mean_reward = self.training_evaluation()
+                print('Ep %d Up %d: mean reward %.2f, max_reward %.1f, actual_mean_reward %.2f' % (self.i_episode, self.update_times, mean_total_reward, max_reward, actual_mean_reward))
                 sys.stdout.flush()
                 total_reward_log = []
-                torch.save(self.Q.state_dict(), 'dqn_params.pt')
-
+                torch.save(self.Q.state_dict(), self.name)
+                if self.i_episode == 30000:
+                    break
 
     def make_action(self, observation, test=True):
         """
@@ -190,4 +227,22 @@ class Agent_DQN(Agent):
             return self.Q(obs).data.max(1)[1].cpu()[0]
         else:
             return random.randrange(self.num_actions)
+
+    def training_evaluation(self):
+        from environment import Environment
+        rewards = []
+        seed = 11037
+        env = env = Environment('BreakoutNoFrameskip-v4', None, atari_wrapper=True, test=True)
+        env.seed(seed)
+        for i in range(100):
+            state = env.reset()
+            done = False
+            episode_reward = 0.0
+            #playing one game
+            while(not done):
+                action = self.make_action(state, test=True)
+                state, reward, done, info = env.step(action)
+                episode_reward += reward
+            rewards.append(episode_reward)
+        return np.mean(rewards)
 
