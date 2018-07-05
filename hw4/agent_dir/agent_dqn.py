@@ -119,7 +119,7 @@ class Agent_DQN(Agent):
         if self.use_cuda:
             self.Q = self.Q.cuda()
             self.target_Q = self.target_Q.cuda()
-
+        
         self.optimizer = torch.optim.Adam(self.Q.parameters(), lr=self.learning_rate)
         self.replay_buffer = ReplayMemory(self.replay_buffer_size)
 
@@ -145,6 +145,7 @@ class Agent_DQN(Agent):
         """
         total_reward = 0
         total_reward_log = []
+        actual_reward_log = []
         last_obs = self.env.reset()
         for t in range(10000000):
             action = self.make_action(np.array(last_obs), test=False)
@@ -155,7 +156,21 @@ class Agent_DQN(Agent):
             if done:
                 total_reward_log.append(total_reward)
                 total_reward = 0
+                total_reward_log = total_reward_log[-30:]
+                actual_reward_log.append(self.training_evaluation())
+                actual_reward_log = actual_reward_log[-30:]
                 self.i_episode += 1
+
+                mean_total_reward = sum(total_reward_log) / float(len(total_reward_log))
+                max_reward = np.max(total_reward_log)
+                actual_mean_reward = sum(actual_reward_log) / float(len(actual_reward_log))
+                print('Ep %d Up %d: mean reward %.2f, max_reward %.1f, actual_mean_reward %.2f' % (self.i_episode, self.update_times, mean_total_reward, max_reward, actual_mean_reward))
+                sys.stdout.flush()
+                if self.i_episode % 100 == 0:
+                    torch.save(self.Q.state_dict(), self.name)
+                if self.i_episode % 20000 == 0:
+                    break
+
                 obs = self.env.reset()
             last_obs = obs
 
@@ -189,23 +204,6 @@ class Agent_DQN(Agent):
                 if self.update_times % self.target_update_freq == 0:
                     self.target_Q.load_state_dict(self.Q.state_dict())
 
-            #if self.update_times % 5000 == 0 and self.update_times > 0:
-            #    mean_total_reward = sum(total_reward_log) / float(len(total_reward_log))
-            #    print('Timestep %d: mean reward %5f' % (self.update_times, mean_total_reward))
-            #    sys.stdout.flush()
-            #    torch.save(self.Q.state_dict(), 'dqn_params.pt')
-
-            if len(total_reward_log) >= 100:
-                mean_total_reward = sum(total_reward_log) / float(len(total_reward_log))
-                max_reward = np.max(total_reward_log)
-                actual_mean_reward = self.training_evaluation()
-                print('Ep %d Up %d: mean reward %.2f, max_reward %.1f, actual_mean_reward %.2f' % (self.i_episode, self.update_times, mean_total_reward, max_reward, actual_mean_reward))
-                sys.stdout.flush()
-                total_reward_log = []
-                torch.save(self.Q.state_dict(), self.name)
-                if self.i_episode == 30000:
-                    break
-
     def make_action(self, observation, test=True):
         """
         Return predicted action of your agent
@@ -230,19 +228,17 @@ class Agent_DQN(Agent):
 
     def training_evaluation(self):
         from environment import Environment
-        rewards = []
         seed = 11037
         env = env = Environment('BreakoutNoFrameskip-v4', None, atari_wrapper=True, test=True)
         env.seed(seed)
-        for i in range(100):
-            state = env.reset()
-            done = False
-            episode_reward = 0.0
-            #playing one game
-            while(not done):
-                action = self.make_action(state, test=True)
-                state, reward, done, info = env.step(action)
-                episode_reward += reward
-            rewards.append(episode_reward)
-        return np.mean(rewards)
+            
+        state = env.reset()
+        done = False
+        episode_reward = 0.0
+        #playing one game
+        while(not done):
+            action = self.make_action(state, test=True)
+            state, reward, done, info = env.step(action)
+            episode_reward += reward
+        return episode_reward
 
