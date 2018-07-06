@@ -8,8 +8,8 @@ dqn_rewards = []
 ddqn_episodes = []
 ddqn_rewards = []
 
-use_update_x = False
-threshold = 28000 if not use_update_x else 1000000
+use_update_x = True
+threshold = 28000 if not use_update_x else 1400000
 
 plot_compare = len(sys.argv) > 2
 with open(sys.argv[1], 'r') as f:
@@ -45,13 +45,13 @@ if not plot_compare:
 	ax1.plot(dqn_episodes, dqn_rewards)
 else:
 	plt.title('DQN-Dueling_DQN Training')
-	ax1.set_ylim(0, 85)
+	ax1.set_ylim(0, 130)
 	ax1.set_ylabel('Mean 100 Ep Rewards (DQN)', color='red')
 	ax1.plot(dqn_episodes, dqn_rewards, color='red', alpha=0.7)
 	ax1.tick_params(axis='y', labelcolor='red')
 	
 	ax2 = ax1.twinx()
-	ax2.set_ylim(0, 85)
+	ax2.set_ylim(0, 130)
 	ax2.set_ylabel('Mean 100 Ep Rewards (Dueling_DQN)', color='blue')
 	ax2.plot(ddqn_episodes, ddqn_rewards, color='blue', alpha=0.7)
 	ax2.tick_params(axis='y', labelcolor='blue')
